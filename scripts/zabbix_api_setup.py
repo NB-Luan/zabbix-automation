@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """
-zabbix_api_setup.py - Setup Custom Items and Triggers via Zabbix API
+zabbix_api_setup.py - Full Zabbix Server Setup & Verification via Zabbix JSON-RPC API
 Target: Zabbix Server 7.0 LTS (192.168.56.10)
+Host: web-server (192.168.56.21)
 """
 import json
 import sys
+import time
 import urllib.request
 
 ZABBIX_URL = "http://192.168.56.10/zabbix/api_jsonrpc.php"
@@ -48,7 +50,7 @@ def main():
         sys.exit(1)
 
     host_id = hosts[0]["hostid"]
-    print(f"Found host '{TARGET_HOST}' (hostid: {host_id})")
+    print(f"Target Host: '{TARGET_HOST}' (hostid: {host_id})")
 
     interfaces = api_call("hostinterface.get", {"hostids": [host_id]}, auth)
     if not interfaces:
@@ -56,9 +58,27 @@ def main():
         sys.exit(1)
 
     interface_id = interfaces[0]["interfaceid"]
-    print(f"Using interfaceid: {interface_id} ({interfaces[0]['ip']}:{interfaces[0]['port']})")
+    print(f"Interface: {interface_id} ({interfaces[0]['ip']}:{interfaces[0]['port']})")
 
-    # 2. Define Items to Create
+    # 2. Configure Host Macro for Nginx stub_status port 8080
+    existing_macros = api_call("usermacro.get", {"hostids": [host_id]}, auth)
+    macro_name = "{$NGINX.STUB_STATUS.PORT}"
+    macro_found = False
+    for m in existing_macros:
+        if m["macro"] == macro_name:
+            macro_found = True
+            if m["value"] != "8080":
+                api_call("usermacro.update", {"hostmacroid": m["hostmacroid"], "value": "8080"}, auth)
+                print(f"  [UPDATED] Macro {macro_name} updated to 8080")
+            else:
+                print(f"  [EXISTS] Macro {macro_name} = 8080")
+            break
+
+    if not macro_found:
+        api_call("usermacro.create", {"hostid": host_id, "macro": macro_name, "value": "8080"}, auth)
+        print(f"  [CREATED] Macro {macro_name} = 8080")
+
+    # 3. Define & Create Custom Items
     items_def = [
         {
             "name": "Nginx: HTTP Response Time",
@@ -72,7 +92,7 @@ def main():
             "name": "Nginx: HTTP 5xx Error Count",
             "key_": "custom.nginx.error_5xx",
             "type": 0,
-            "value_type": 3,    # Numeric unsigned
+            "value_type": 3,
             "units": "",
             "delay": "15s",
         },
@@ -80,7 +100,7 @@ def main():
             "name": "Nginx: Active Connections",
             "key_": "custom.nginx.active_conn",
             "type": 0,
-            "value_type": 3,    # Numeric unsigned
+            "value_type": 3,
             "units": "",
             "delay": "15s",
         },
@@ -88,7 +108,7 @@ def main():
             "name": "System: Zombie Processes Count",
             "key_": "custom.sys.zombie_procs",
             "type": 0,
-            "value_type": 3,    # Numeric unsigned
+            "value_type": 3,
             "units": "",
             "delay": "15s",
         },
@@ -96,7 +116,7 @@ def main():
             "name": "System: Failed Systemd Units Count",
             "key_": "custom.sys.failed_units",
             "type": 0,
-            "value_type": 3,    # Numeric unsigned
+            "value_type": 3,
             "units": "",
             "delay": "15s",
         },
@@ -110,7 +130,6 @@ def main():
         },
     ]
 
-    # Get existing items to avoid duplicates
     existing_items = api_call(
         "item.get",
         {"hostids": [host_id], "output": ["itemid", "name", "key_"]},
@@ -123,7 +142,6 @@ def main():
         key = item_spec["key_"]
         if key in existing_keys:
             item_id = existing_keys[key]
-            print(f"  [EXISTS] Item '{key}' already exists (itemid: {item_id})")
             created_items[key] = item_id
         else:
             create_params = {
@@ -142,10 +160,10 @@ def main():
 
             res = api_call("item.create", create_params, auth)
             item_id = res["itemids"][0]
-            print(f"  [CREATED] Item '{key}' created successfully (itemid: {item_id})")
+            print(f"  [CREATED] Item '{key}' (itemid: {item_id})")
             created_items[key] = item_id
 
-    # 3. Define Triggers
+    # 4. Define & Create Custom Triggers
     triggers_def = [
         {
             "description": f"Nginx HTTP 5xx errors detected on {TARGET_HOST}",
@@ -175,9 +193,7 @@ def main():
     for trig_spec in triggers_def:
         desc = trig_spec["description"]
         if desc in existing_desc:
-            trig_id = existing_desc[desc]
-            print(f"  [EXISTS] Trigger '{desc}' already exists (triggerid: {trig_id})")
-            created_triggers[desc] = trig_id
+            created_triggers[desc] = existing_desc[desc]
         else:
             res = api_call(
                 "trigger.create",
@@ -189,13 +205,52 @@ def main():
                 auth,
             )
             trig_id = res["triggerids"][0]
-            print(f"  [CREATED] Trigger '{desc}' created successfully (triggerid: {trig_id})")
+            print(f"  [CREATED] Trigger '{desc}' (triggerid: {trig_id})")
             created_triggers[desc] = trig_id
 
-    print("\n--- Summary ---")
-    print(f"Host: {TARGET_HOST} (hostid: {host_id})")
-    print(f"Items managed: {len(created_items)}")
-    print(f"Triggers managed: {len(created_triggers)}")
+    # 5. Trigger Instant Polling (Execute Now) for Custom Items
+    task_requests = [{"type": 6, "request": {"itemid": i_id}} for i_id in created_items.values()]
+    try:
+        api_call("task.create", task_requests, auth)
+        time.sleep(2)
+    except Exception:
+        pass
+
+    # 6. Display Current Status Report
+    monitored_items = api_call(
+        "item.get",
+        {
+            "hostids": [host_id],
+            "itemids": list(created_items.values()),
+            "output": ["itemid", "name", "key_", "lastvalue", "state", "error"],
+        },
+        auth,
+    )
+
+    print("\n" + "=" * 70)
+    print("  ZABBIX SERVER: VERIFIED CUSTOM ITEMS STATUS")
+    print("=" * 70)
+    for it in sorted(monitored_items, key=lambda x: x["key_"]):
+        st = "Supported" if it["state"] == "0" else f"Unsupported ({it['error']})"
+        print(f"  Key: {it['key_']:<25} | Val: {it['lastvalue']:<8} | State: {st}")
+
+    print("\n" + "=" * 70)
+    print("  ZABBIX SERVER: VERIFIED CUSTOM TRIGGERS STATUS")
+    print("=" * 70)
+    p_names = {"2": "Warning", "3": "Average", "4": "High"}
+    monitored_triggers = api_call(
+        "trigger.get",
+        {
+            "triggerids": list(created_triggers.values()),
+            "output": ["triggerid", "description", "priority", "value"],
+        },
+        auth,
+    )
+    for tr in monitored_triggers:
+        val_str = "OK" if tr["value"] == "0" else "PROBLEM"
+        sev = p_names.get(tr["priority"], tr["priority"])
+        print(f"  Trigger: {tr['description']:<52} | Sev: {sev:<8} | Status: {val_str}")
+    print("=" * 70)
 
 
 if __name__ == "__main__":
