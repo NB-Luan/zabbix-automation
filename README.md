@@ -77,7 +77,7 @@ zabbix-automation/
 
 ### Bước 1: Clone mã nguồn về máy
 ```bash
-git clone <URL_REPO_GITHUB> zabbix-automation
+git clone https://github.com/NB-Luan/zabbix-automation.git
 cd zabbix-automation
 ```
 
