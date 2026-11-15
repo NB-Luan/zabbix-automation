@@ -44,6 +44,14 @@ zabbix-automation/
 │   └── zabbix_api_setup.py       # Tự động tạo Items, Triggers, cấu hình Macro qua Zabbix API
 ├── tests/
 │   └── simulate_incident.sh      # Kịch bản giả lập sự cố (CPU/RAM stress, HTTP storm, Nginx outage)
+├── web_dashboard/                # Ứng dụng Web Dashboard thời gian thực & Chaos Lab (Flask + Tailwind + Chart.js)
+│   ├── static/
+│   │   ├── css/dashboard.css     # CSS giao diện NOC Dark Mode, hiệu ứng phát sáng & cảnh báo
+│   │   └── js/dashboard.js       # Script biểu đồ Chart.js, cập nhật dữ liệu 5s & điều khiển SSH
+│   ├── templates/
+│   │   └── index.html            # Giao diện chính trung tâm giám sát NOC
+│   ├── app.py                    # Backend Flask API kết nối Zabbix JSON-RPC & SSH VM2
+│   └── requirements.txt          # Thư viện phụ thuộc Python (Flask, requests, paramiko)
 ├── .env.example                  # File mẫu cấu hình biến môi trường (IP, User, Port)
 ├── .gitattributes                # Quy tắc ép buộc chuẩn xuống dòng Linux LF cho toàn bộ script
 ├── .gitignore                    # Bộ lọc file tạm, file cá nhân và trạng thái nội bộ
@@ -164,3 +172,41 @@ Truy cập: **`http://192.168.56.10/zabbix`** (User: `Admin` / Pass: `zabbix`) -
      ```powershell
      type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh linux-moniter@192.168.56.21 "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
      ```
+
+---
+
+## 6. Giao Diện Web Dashboard Giám Sát Thời Gian Thực (NOC Dashboard)
+
+Dự án cung cấp một ứng dụng Web Dashboard trực quan và hiện đại chạy trên nền **Python Flask**, **TailwindCSS** và **Chart.js** nằm trong thư mục `web_dashboard/`.
+
+### 6.1 Các Tính Năng Nổi Bật
+* **Giao diện NOC Dark Mode**: Thiết kế tối ưu cho trung tâm điều hành mạng, tự động cập nhật dữ liệu từ Zabbix Server mỗi 5 giây mà không cần tải lại trang.
+* **6 Thẻ Chỉ Số KPI Thời Gian Thực**:
+  * Độ trễ phản hồi Web (`response_ms`)
+  * Số kết nối đang hoạt động (`active_conn`)
+  * Số lỗi HTTP 5xx (`error_5xx`)
+  * Số tiến trình Zombie (`zombie_procs`)
+  * Số dịch vụ systemd bị hỏng (`failed_units`)
+  * Tải I/O ổ đĩa (`disk_io_util`)
+* **2 Biểu Đồ Đường Realtime**: Trực quan hóa độ biến thiên thời gian thực của độ trễ và lưu lượng kết nối.
+* **Bảng Cảnh Báo Trạng Thái Sự Cố (Active Problems)**: Tự động phát hiện và hiển thị các cảnh báo đang kích hoạt từ Zabbix Server, chuyển hiệu ứng đèn đỏ nhấp nháy khi có sự cố.
+* **Bảng Điều Khiển Giả Lập Sự Cố Từ Xa (Interactive Chaos Lab)**: Tích hợp 3 nút kích hoạt các kịch bản kiểm thử trực tiếp lên VM2 qua kết nối SSH:
+  1. **Bão 1.000 HTTP Requests (`--storm`)**
+  2. **Quá tải CPU/RAM 60 giây (`--stress`)**
+  3. **Dừng Nginx 45 giây (`--outage`)**
+  Kèm theo **Live Terminal Console** hiển thị log phản hồi thời gian thực từ VM2 ngay trên trang web.
+
+### 6.2 Hướng Dẫn Cài Đặt & Chạy Web Dashboard
+1. Cài đặt các thư viện cần thiết:
+   ```bash
+   pip install -r web_dashboard/requirements.txt
+   ```
+2. Khởi chạy ứng dụng Dashboard:
+   ```bash
+   python web_dashboard/app.py
+   ```
+3. Mở trình duyệt và truy cập:
+   ```text
+   http://localhost:5000
+   ```
+   *(Hoặc từ máy khác trong cùng mạng LAN: `http://<IP_MAY_BAN>:5000`)*

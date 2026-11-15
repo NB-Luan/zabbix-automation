@@ -45,7 +45,7 @@ run_mode2() {
     echo "=================================================================="
     local target_url="http://127.0.0.1:80/"
     echo "[INFO] Dispatching 1,000 HTTP requests to $target_url with concurrency 10..."
-    seq 1000 | xargs -n 1 -P 10 curl -s -o /dev/null "$target_url" || true
+    seq 1000 | xargs -I{} -P 10 curl -s --max-time 3 -o /dev/null "$target_url" || true
     echo "[PASS] Mode 2 completed. 1,000 requests processed."
 }
 

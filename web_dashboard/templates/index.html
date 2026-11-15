@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="vi" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zabbix NOC Dashboard - VM2 Monitoring & Chaos Engineering</title>
+    <!-- TailwindCSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Google Fonts: Inter & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        darkBg: '#0b0f17',
+                        cardBg: '#131b2a',
+                        cardBorder: '#1e293b',
+                        accentBlue: '#38bdf8',
+                        accentGreen: '#10b981',
+                        accentAmber: '#f59e0b',
+                        accentRed: '#ef4444',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-darkBg text-slate-100 font-sans min-h-screen flex flex-col antialiased selection:bg-cyan-500 selection:text-white">
+
+    <!-- Top Navigation / Header -->
+    <header class="border-b border-cardBorder bg-cardBg/80 backdrop-blur sticky top-0 z-50 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 shadow-xl">
+        <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-red-600 to-rose-400 flex items-center justify-center shadow-lg shadow-red-500/20 font-black text-xl text-white">
+                Z
+            </div>
+            <div>
+                <div class="flex items-center space-x-2">
+                    <h1 class="text-lg font-bold tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-transparent">Zabbix Operations Center</h1>
+                    <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">NOC Realtime</span>
+                </div>
+                <p class="text-xs text-slate-400 flex items-center gap-1.5">
+                    <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                    <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 -ml-3.5"></span>
+                    Live Telemetry: <strong class="text-slate-200">{{ host_name }} ({{ web_server_ip }})</strong> &bull; Server: {{ zabbix_server_ip }}
+                </p>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-4">
+            <div class="hidden sm:flex items-center space-x-2 text-xs text-slate-400 bg-slate-900/80 px-3 py-1.5 rounded-lg border border-slate-800">
+                <i class="fa-regular fa-clock text-cyan-400"></i>
+                <span id="currentTime">--:--:--</span>
+            </div>
+            <div class="flex items-center space-x-2 text-xs font-medium text-slate-300 bg-slate-900/80 px-3 py-1.5 rounded-lg border border-slate-800">
+                <span class="w-2 h-2 rounded-full bg-cyan-400" id="refreshDot"></span>
+                <span>Auto-refresh: <strong class="text-cyan-400" id="countdownSec">5s</strong></span>
+            </div>
+            <a href="http://{{ zabbix_server_ip }}/zabbix" target="_blank" class="px-3 py-1.5 text-xs font-semibold bg-red-600/20 hover:bg-red-600/30 text-red-400 hover:text-red-300 border border-red-500/30 rounded-lg transition-all flex items-center gap-1.5 shadow-sm">
+                <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                <span>Zabbix Web</span>
+            </a>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-6">
+
+        <!-- Active Alerts / System Health Banner -->
+        <section id="healthBanner" class="p-4 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 flex items-center justify-between transition-all duration-500 shadow-lg shadow-emerald-950/20">
+            <div class="flex items-center space-x-3.5">
+                <div id="healthIconBox" class="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-lg shadow-inner">
+                    <i class="fa-solid fa-circle-check"></i>
+                </div>
+                <div>
+                    <h2 id="healthTitle" class="text-sm font-bold text-emerald-300">Tất Cả Hệ Thống Hoạt Động Bình Thường</h2>
+                    <p id="healthDesc" class="text-xs text-slate-400">0 sự cố đang diễn ra trên máy chủ VM2 web-server. Tất cả các trigger Zabbix đều ở mức an toàn.</p>
+                </div>
+            </div>
+            <div id="healthCountBadge" class="hidden sm:flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                0 Active Alerts
+            </div>
+        </section>
+
+        <!-- Active Problems Details List (Revealed only when problems exist) -->
+        <div id="problemsContainer" class="hidden space-y-2">
+            <!-- Injected by JavaScript -->
+        </div>
+
+        <!-- 6 Metrics KPI Cards Grid -->
+        <section class="grid grid-cols-2 lg:grid-cols-6 gap-3 sm:gap-4">
+            <!-- Card 1: Response Time -->
+            <div class="metric-card bg-cardBg border border-cardBorder rounded-2xl p-4 flex flex-col justify-between hover:border-cyan-500/50 transition-all shadow-md group">
+                <div class="flex items-center justify-between text-slate-400 text-xs font-semibold mb-2">
+                    <span class="group-hover:text-cyan-400 transition-colors">Response Time</span>
+                    <i class="fa-solid fa-gauge-high text-cyan-400"></i>
+                </div>
+                <div class="flex items-baseline space-x-1.5 my-1">
+                    <span id="val_response_ms" class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">0</span>
+                    <span class="text-xs font-medium text-slate-400">ms</span>
+                </div>
+                <div class="mt-2 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px]">
+                    <span class="text-slate-400">Nginx HTTP :80</span>
+                    <span id="badge_response_ms" class="text-emerald-400 font-semibold flex items-center gap-1"><i class="fa-solid fa-check text-[10px]"></i> Fast</span>
+                </div>
+            </div>
+
+            <!-- Card 2: Active Connections -->
+            <div class="metric-card bg-cardBg border border-cardBorder rounded-2xl p-4 flex flex-col justify-between hover:border-emerald-500/50 transition-all shadow-md group">
+                <div class="flex items-center justify-between text-slate-400 text-xs font-semibold mb-2">
+                    <span class="group-hover:text-emerald-400 transition-colors">Active Conn</span>
+                    <i class="fa-solid fa-network-wired text-emerald-400"></i>
+                </div>
+                <div class="flex items-baseline space-x-1.5 my-1">
+                    <span id="val_active_conn" class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">0</span>
+                    <span class="text-xs font-medium text-slate-400">conn</span>
+                </div>
+                <div class="mt-2 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px]">
+                    <span class="text-slate-400">stub_status :8080</span>
+                    <span class="text-cyan-400 font-semibold">Active</span>
+                </div>
+            </div>
+
+            <!-- Card 3: HTTP 5xx Errors -->
+            <div class="metric-card bg-cardBg border border-cardBorder rounded-2xl p-4 flex flex-col justify-between hover:border-rose-500/50 transition-all shadow-md group">
+                <div class="flex items-center justify-between text-slate-400 text-xs font-semibold mb-2">
+                    <span class="group-hover:text-rose-400 transition-colors">HTTP 5xx Errors</span>
+                    <i class="fa-solid fa-triangle-exclamation text-rose-400"></i>
+                </div>
+                <div class="flex items-baseline space-x-1.5 my-1">
+                    <span id="val_error_5xx" class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">0</span>
+                    <span class="text-xs font-medium text-slate-400">errs</span>
+                </div>
+                <div class="mt-2 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px]">
+                    <span class="text-slate-400">access.log</span>
+                    <span id="badge_error_5xx" class="text-emerald-400 font-semibold">Zero Error</span>
+                </div>
+            </div>
+
+            <!-- Card 4: Zombie Processes -->
+            <div class="metric-card bg-cardBg border border-cardBorder rounded-2xl p-4 flex flex-col justify-between hover:border-amber-500/50 transition-all shadow-md group">
+                <div class="flex items-center justify-between text-slate-400 text-xs font-semibold mb-2">
+                    <span class="group-hover:text-amber-400 transition-colors">Zombie Procs</span>
+                    <i class="fa-solid fa-skull text-amber-400"></i>
+                </div>
+                <div class="flex items-baseline space-x-1.5 my-1">
+                    <span id="val_zombie_procs" class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">0</span>
+                    <span class="text-xs font-medium text-slate-400">defunct</span>
+                </div>
+                <div class="mt-2 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px]">
+                    <span class="text-slate-400">OS Process Table</span>
+                    <span id="badge_zombie_procs" class="text-emerald-400 font-semibold">Clean</span>
+                </div>
+            </div>
+
+            <!-- Card 5: Failed Units -->
+            <div class="metric-card bg-cardBg border border-cardBorder rounded-2xl p-4 flex flex-col justify-between hover:border-purple-500/50 transition-all shadow-md group">
+                <div class="flex items-center justify-between text-slate-400 text-xs font-semibold mb-2">
+                    <span class="group-hover:text-purple-400 transition-colors">Failed Units</span>
+                    <i class="fa-solid fa-server text-purple-400"></i>
+                </div>
+                <div class="flex items-baseline space-x-1.5 my-1">
+                    <span id="val_failed_units" class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">0</span>
+                    <span class="text-xs font-medium text-slate-400">units</span>
+                </div>
+                <div class="mt-2 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px]">
+                    <span class="text-slate-400">systemctl --failed</span>
+                    <span id="badge_failed_units" class="text-emerald-400 font-semibold">Normal</span>
+                </div>
+            </div>
+
+            <!-- Card 6: Disk I/O Utilization -->
+            <div class="metric-card bg-cardBg border border-cardBorder rounded-2xl p-4 flex flex-col justify-between hover:border-sky-500/50 transition-all shadow-md group">
+                <div class="flex items-center justify-between text-slate-400 text-xs font-semibold mb-2">
+                    <span class="group-hover:text-sky-400 transition-colors">Disk I/O Util</span>
+                    <i class="fa-solid fa-hard-drive text-sky-400"></i>
+                </div>
+                <div class="flex items-baseline space-x-1.5 my-1">
+                    <span id="val_disk_io_util" class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">0.0</span>
+                    <span class="text-xs font-medium text-slate-400">%</span>
+                </div>
+                <div class="mt-2 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px]">
+                    <span class="text-slate-400">iostat %util</span>
+                    <span class="text-slate-400 font-semibold">sda / vda</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Real-Time Charts Section -->
+        <section class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <!-- Chart 1: Latency -->
+            <div class="bg-cardBg border border-cardBorder rounded-2xl p-5 shadow-xl">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center space-x-2.5">
+                        <div class="w-8 h-8 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center text-sm">
+                            <i class="fa-solid fa-bolt"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-sm font-bold text-slate-200">Độ Trễ Phản Hồi Web (Response Latency)</h3>
+                            <p class="text-xs text-slate-400">Đo bằng ms tới http://127.0.0.1:80/ theo chu kỳ thời gian thực</p>
+                        </div>
+                    </div>
+                    <span class="text-xs font-mono text-cyan-400 bg-cyan-500/10 px-2.5 py-1 rounded-md border border-cyan-500/20">Trigger: &gt; 500ms</span>
+                </div>
+                <div class="relative h-60 w-full">
+                    <canvas id="responseChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Chart 2: Active Connections -->
+            <div class="bg-cardBg border border-cardBorder rounded-2xl p-5 shadow-xl">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center space-x-2.5">
+                        <div class="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-sm">
+                            <i class="fa-solid fa-chart-line"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-sm font-bold text-slate-200">Tải Kết Nối Nginx (Active Connections)</h3>
+                            <p class="text-xs text-slate-400">Đọc trực tiếp từ basic_status cổng 8080</p>
+                        </div>
+                    </div>
+                    <span class="text-xs font-mono text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-md border border-emerald-500/20">Realtime Load</span>
+                </div>
+                <div class="relative h-60 w-full">
+                    <canvas id="connChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- Remote Incident Simulator & Live Terminal (Chaos Engineering Panel) -->
+        <section class="bg-cardBg border border-cardBorder rounded-2xl p-5 shadow-xl space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-cardBorder">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-600 to-rose-500 flex items-center justify-center text-white text-lg shadow-lg shadow-amber-500/20">
+                        <i class="fa-solid fa-radiation"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                            Bảng Điều Khiển Giả Lập Sự Cố Từ Xa
+                            <span class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">Chaos Lab</span>
+                        </h3>
+                        <p class="text-xs text-slate-400">Kích hoạt trực tiếp các kịch bản kiểm thử trên VM2 qua SSH để kích hoạt Trigger trên Zabbix Server</p>
+                    </div>
+                </div>
+
+                <div class="flex items-center space-x-2">
+                    <button onclick="clearLogs()" class="px-3 py-1.5 text-xs font-medium text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors border border-slate-700 flex items-center gap-1.5">
+                        <i class="fa-solid fa-broom"></i>
+                        <span>Xóa Log</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 3 Simulation Action Buttons -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <!-- Action 1: Storm -->
+                <button id="btnStorm" onclick="triggerSimulation('storm')" class="btn-chaos group relative overflow-hidden p-4 rounded-xl bg-gradient-to-br from-blue-950/40 to-slate-900 border border-blue-600/30 hover:border-blue-500 hover:shadow-lg hover:shadow-blue-500/20 text-left transition-all">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center text-sm font-bold group-hover:scale-110 transition-transform">
+                            <i class="fa-solid fa-cloud-bolt"></i>
+                        </span>
+                        <span class="text-[10px] font-mono uppercase bg-blue-500/10 text-blue-300 px-2 py-0.5 rounded border border-blue-500/20">--storm</span>
+                    </div>
+                    <h4 class="text-sm font-bold text-slate-100 group-hover:text-blue-300 transition-colors">Bão 1.000 HTTP Requests</h4>
+                    <p class="text-xs text-slate-400 mt-1">Bơm 1.000 requests đồng thời vào Nginx để làm tăng đột biến kết nối và lưu lượng.</p>
+                </button>
+
+                <!-- Action 2: Stress -->
+                <button id="btnStress" onclick="triggerSimulation('stress')" class="btn-chaos group relative overflow-hidden p-4 rounded-xl bg-gradient-to-br from-amber-950/40 to-slate-900 border border-amber-600/30 hover:border-amber-500 hover:shadow-lg hover:shadow-amber-500/20 text-left transition-all">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center text-sm font-bold group-hover:scale-110 transition-transform">
+                            <i class="fa-solid fa-fire-burner"></i>
+                        </span>
+                        <span class="text-[10px] font-mono uppercase bg-amber-500/10 text-amber-300 px-2 py-0.5 rounded border border-amber-500/20">--stress</span>
+                    </div>
+                    <h4 class="text-sm font-bold text-slate-100 group-hover:text-amber-300 transition-colors">Quá Tải CPU/RAM 60 Giây</h4>
+                    <p class="text-xs text-slate-400 mt-1">Chạy `stress-ng` ép 2 nhân CPU và 70% RAM để thử nghiệm ngưỡng tải cảnh báo.</p>
+                </button>
+
+                <!-- Action 3: Outage -->
+                <button id="btnOutage" onclick="triggerSimulation('outage')" class="btn-chaos group relative overflow-hidden p-4 rounded-xl bg-gradient-to-br from-rose-950/40 to-slate-900 border border-rose-600/30 hover:border-rose-500 hover:shadow-lg hover:shadow-rose-500/20 text-left transition-all">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="w-8 h-8 rounded-lg bg-rose-500/20 text-rose-400 flex items-center justify-center text-sm font-bold group-hover:scale-110 transition-transform">
+                            <i class="fa-solid fa-power-off"></i>
+                        </span>
+                        <span class="text-[10px] font-mono uppercase bg-rose-500/10 text-rose-300 px-2 py-0.5 rounded border border-rose-500/20">--outage</span>
+                    </div>
+                    <h4 class="text-sm font-bold text-slate-100 group-hover:text-rose-300 transition-colors">Dừng Nginx 45 Giây (Bật Alert)</h4>
+                    <p class="text-xs text-slate-400 mt-1">Dừng `nginx` 45s để Zabbix kích hoạt Problem, sau đó tự động khôi phục về OK.</p>
+                </button>
+            </div>
+
+            <!-- Live SSH Terminal Output Box -->
+            <div class="mt-4 rounded-xl border border-slate-800 bg-[#070b12] overflow-hidden shadow-2xl">
+                <div class="bg-slate-900/90 px-4 py-2 border-b border-slate-800 flex items-center justify-between text-xs text-slate-400 font-mono">
+                    <div class="flex items-center space-x-2">
+                        <span class="w-3 h-3 rounded-full bg-rose-500/80 inline-block"></span>
+                        <span class="w-3 h-3 rounded-full bg-amber-500/80 inline-block"></span>
+                        <span class="w-3 h-3 rounded-full bg-emerald-500/80 inline-block"></span>
+                        <span class="ml-2 text-slate-300 font-semibold">remote-terminal: linux-moniter@{{ web_server_ip }}</span>
+                    </div>
+                    <div id="simStatusPill" class="flex items-center space-x-1.5 text-slate-400">
+                        <span class="w-2 h-2 rounded-full bg-slate-500" id="simDot"></span>
+                        <span id="simStatusText">Idle</span>
+                    </div>
+                </div>
+                <div id="terminalBody" class="p-4 h-48 overflow-y-auto font-mono text-xs text-emerald-400/90 leading-relaxed space-y-1 select-text">
+                    <!-- Logs stream here -->
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-cardBorder py-4 px-6 text-center text-xs text-slate-400 bg-cardBg/40">
+        <p>&copy; 2026 Zabbix Monitoring Automation Platform &bull; Built with Flask, TailwindCSS & Chart.js &bull; Target: Ubuntu Server 26.04 LTS</p>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>
