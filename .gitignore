@@ -1,16 +1,42 @@
-# Python
+# ==============================================================================
+# .gitignore - Zabbix Monitoring Automation
+# ==============================================================================
+
+# AI & Spec-Driven Development Toolkit Folders (Internal agent state)
+.specify/
+.agents/
+.agent/
+_agents/
+_agent/
+specs/
+.claude/
+.cursor/
+.gemini/
+
+# Environment & Local Secrets
+.env
+.env.local
+config.local.*
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+
+# Python Cache
 __pycache__/
 *.py[cod]
 *$py.class
 .venv/
 venv/
 
-# Deployment & Temporary files
-*.tmp
-*.log
-/tmp/
+# Operating System & Editor Artifacts
 .DS_Store
 Thumbs.db
+ehthumbs.db
+*.tmp
+*.log
+.vscode/
+.idea/
 
-# Spec Kit machine-local state
-.specify/feature.json
+# Deployment & Remote Temporary Dirs
+/tmp/

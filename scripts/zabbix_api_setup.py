@@ -1,18 +1,39 @@
 #!/usr/bin/env python3
 """
 zabbix_api_setup.py - Full Zabbix Server Setup & Verification via Zabbix JSON-RPC API
-Target: Zabbix Server 7.0 LTS (192.168.56.10)
-Host: web-server (192.168.56.21)
+Target: Zabbix Server 7.0 LTS (Default: 192.168.56.10)
+Host: web-server (Default: 192.168.56.21)
 """
 import json
+import os
 import sys
 import time
 import urllib.request
 
-ZABBIX_URL = "http://192.168.56.10/zabbix/api_jsonrpc.php"
-ZABBIX_USER = "Admin"
-ZABBIX_PASS = "zabbix"
-TARGET_HOST = "web-server"
+
+def load_env_file():
+    """Load key-value pairs from .env file if present in the project root."""
+    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+    if os.path.isfile(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, val = line.split("=", 1)
+                    key = key.strip()
+                    val = val.strip().strip('"').strip("'")
+                    if key and key not in os.environ:
+                        os.environ[key] = val
+
+
+load_env_file()
+
+ZABBIX_SERVER_IP = os.environ.get("ZABBIX_SERVER_IP", "192.168.56.10")
+ZABBIX_URL = os.environ.get("ZABBIX_API_URL", f"http://{ZABBIX_SERVER_IP}/zabbix/api_jsonrpc.php")
+ZABBIX_USER = os.environ.get("ZABBIX_API_USER", "Admin")
+ZABBIX_PASS = os.environ.get("ZABBIX_API_PASS", "zabbix")
+TARGET_HOST = os.environ.get("TARGET_HOST_NAME", "web-server")
+STUB_STATUS_PORT = os.environ.get("WEB_SERVER_STUB_PORT", "8080")
 
 
 def api_call(method: str, params: dict, auth_token: str = None) -> dict:
@@ -60,23 +81,23 @@ def main():
     interface_id = interfaces[0]["interfaceid"]
     print(f"Interface: {interface_id} ({interfaces[0]['ip']}:{interfaces[0]['port']})")
 
-    # 2. Configure Host Macro for Nginx stub_status port 8080
+    # 2. Configure Host Macro for Nginx stub_status port
     existing_macros = api_call("usermacro.get", {"hostids": [host_id]}, auth)
     macro_name = "{$NGINX.STUB_STATUS.PORT}"
     macro_found = False
     for m in existing_macros:
         if m["macro"] == macro_name:
             macro_found = True
-            if m["value"] != "8080":
-                api_call("usermacro.update", {"hostmacroid": m["hostmacroid"], "value": "8080"}, auth)
-                print(f"  [UPDATED] Macro {macro_name} updated to 8080")
+            if m["value"] != STUB_STATUS_PORT:
+                api_call("usermacro.update", {"hostmacroid": m["hostmacroid"], "value": STUB_STATUS_PORT}, auth)
+                print(f"  [UPDATED] Macro {macro_name} updated to {STUB_STATUS_PORT}")
             else:
-                print(f"  [EXISTS] Macro {macro_name} = 8080")
+                print(f"  [EXISTS] Macro {macro_name} = {STUB_STATUS_PORT}")
             break
 
     if not macro_found:
-        api_call("usermacro.create", {"hostid": host_id, "macro": macro_name, "value": "8080"}, auth)
-        print(f"  [CREATED] Macro {macro_name} = 8080")
+        api_call("usermacro.create", {"hostid": host_id, "macro": macro_name, "value": STUB_STATUS_PORT}, auth)
+        print(f"  [CREATED] Macro {macro_name} = {STUB_STATUS_PORT}")
 
     # 3. Define & Create Custom Items
     items_def = [
