@@ -44,4 +44,5 @@ ehthumbs.db
 # Presentation & Local Documentation Guides
 *.docx
 *.pptx
+*.txt
 docs/
