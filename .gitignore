@@ -40,3 +40,8 @@ ehthumbs.db
 
 # Deployment & Remote Temporary Dirs
 /tmp/
+
+# Presentation & Local Documentation Guides
+*.docx
+*.pptx
+docs/
